@@ -40,10 +40,14 @@ func main() {
 
 	var message *Message
 
-	fmt.Println("GATTACK!GATTACK!")
+	logTimer := time.Tick(tickDuration)
+	works = make(chan *Work, concurrency)
+	messages = make(chan *Message, concurrency*2)
+	pool = make(chan bool, concurrency)
 
 	flag.StringVar(&tick, "p", "1s", "log period")
 	flag.IntVar(&concurrency, "c", 10, "concurrency")
+	flag.StringVar(&file, "f", "samples.csv", "csv source")
 	flag.Parse()
 
 	tickDuration, err := time.ParseDuration(tick)
@@ -51,16 +55,16 @@ func main() {
 		log.Fatalln(err)
 	}
 
+	fmt.Println("GATTACK!GATTACK!")
 	fmt.Println("print log every ", tickDuration)
 
-	logTimer := time.Tick(tickDuration)
-	works = make(chan *Work, concurrency)
-	messages = make(chan *Message, concurrency*2)
-	pool = make(chan bool, concurrency)
-
 	client = &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: concurrency}}
+	f, err := os.Open(file)
+	if err != nil {
+		log.Fatalln(err)
+	}
 
-	go attack()
+	go attack(f)
 	for {
 
 		select {
@@ -86,25 +90,20 @@ func main() {
 			fmt.Printf("total - %d\n", totalReq)
 			fmt.Printf("t/s - %f\n", throughP)
 			fmt.Printf("active/total - %d/%d\n", curRSize, concurrency)
-
 			fmt.Printf("~~~\n")
-
 		}
-
 	}
 }
 
-func attack() (err error) {
+func attack(f *os.File) (err error) {
 
 	var (
 		reader    *bufio.Reader
 		buffer    []byte
-		f         *os.File
 		work      *Work
 		recordLen int
 	)
 
-	f, err = os.Open(file)
 	reader = bufio.NewReader(f)
 
 	defer func() {
