@@ -45,7 +45,6 @@ func main() {
 	flag.StringVar(&file, "f", "samples.csv", "csv source")
 	flag.Parse()
 
-
 	tickDuration, err := time.ParseDuration(tick)
 	logTimer := time.Tick(tickDuration)
 	works = make(chan *Work, concurrency)
@@ -82,6 +81,7 @@ func main() {
 			curErr := atomic.LoadUint64(&respErr)
 			totalReq := curOk + curErr
 			throughP := float32(totalReq) / float32(tickDuration.Seconds())
+			curResponseTimes := responseTimes
 
 			log.Printf("\n~~~\n")
 			fmt.Printf("ok - %d\n", curOk)
@@ -89,7 +89,7 @@ func main() {
 			fmt.Printf("total - %d\n", totalReq)
 			fmt.Printf("t/s - %f\n", throughP)
 			fmt.Printf("active/total - %d/%d\n", curRSize, concurrency)
-			fmt.Printf("timings - %+v\n", responseTimes)
+			fmt.Printf("timings - %+v\n", curResponseTimes)
 
 			fmt.Printf("~~~\n")
 
@@ -155,16 +155,14 @@ func attack(f *os.File) (err error) {
 
 func attackattack(work *Work) {
 
-
 	var (
-		req  *http.Request
-		err  error
-		resp *http.Response
-		start int64
-		stop int64
+		req      *http.Request
+		err      error
+		resp     *http.Response
+		start    int64
+		stop     int64
 		duration int64
 	)
-
 
 	atomic.AddUint64(&currentRoutineSize, uint64(1))
 
@@ -195,7 +193,7 @@ func attackattack(work *Work) {
 	}
 	stop = time.Now().UnixNano()
 
-	duration = stop - start;
+	duration = stop - start
 
 	responseTimes = append(responseTimes, duration)
 	<-pool
