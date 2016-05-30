@@ -23,8 +23,6 @@ var (
 	concurrency int
 	tick        string
 
-	works              chan *Work
-	messages           chan *Message
 	pool               chan bool
 	currentRoutineSize uint64 = 0
 	curRSize           uint64 = 0
@@ -38,8 +36,6 @@ var (
 
 func main() {
 
-	var message *Message
-
 	flag.StringVar(&tick, "p", "1s", "log period")
 	flag.IntVar(&concurrency, "c", 10, "concurrency")
 	flag.StringVar(&file, "f", "samples.csv", "csv source")
@@ -47,8 +43,6 @@ func main() {
 
 	tickDuration, err := time.ParseDuration(tick)
 	logTimer := time.Tick(tickDuration)
-	works = make(chan *Work, concurrency)
-	messages = make(chan *Message, concurrency*2)
 	pool = make(chan bool, concurrency)
 	responseTimes = []int64{}
 
@@ -69,10 +63,6 @@ func main() {
 	for {
 
 		select {
-		case message = <-messages:
-			fmt.Println(message)
-		case <-works:
-			fmt.Println("work!")
 		case <-logTimer:
 
 			curRSize = atomic.LoadUint64(&currentRoutineSize)
@@ -121,7 +111,7 @@ func attack(f *os.File) (err error) {
 		if err == io.EOF {
 			_, err = f.Seek(0, 0)
 		} else if err != nil {
-			messages <- &Message{"", err}
+			log.Fatalln(err)
 			return err
 		}
 
@@ -203,19 +193,14 @@ func prepareReq(work *Work) (req *http.Request, err error) {
 
 	var (
 		urlValues url.Values
-		header    http.Header
 	)
-
-	header = http.Header{}
 
 	if err != nil {
 		return nil, err
 	}
 
 	req, err = http.NewRequest(strings.ToUpper(work.Method), work.Url, nil)
-	header.Add("User-Agent", work.UserAgent)
-
-	req.Header = header
+	req.Header.Add("User-Agent", work.UserAgent)
 	if req.Method == http.MethodPost {
 		urlValues, err = url.ParseQuery(work.Body)
 		req.Form = urlValues
@@ -229,9 +214,4 @@ type Work struct {
 	UserAgent string
 	Method    string
 	Body      string
-}
-
-type Message struct {
-	Message string
-	Err     error
 }
