@@ -5,23 +5,23 @@ import (
 	"bytes"
 	"encoding/csv"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync/atomic"
 	"time"
-	"flag"
-	"log"
-	"io/ioutil"
 )
 
 var (
-	file               string = "samples.csv"
-	concurrency        int
-	tick string
+	file        string = "samples.csv"
+	concurrency int
+	tick        string
 
 	works              chan *Work
 	messages           chan *Message
@@ -29,21 +29,22 @@ var (
 	currentRoutineSize uint64 = 0
 	curRSize           uint64 = 0
 
-
-	respOk uint64 = 0
+	respOk  uint64 = 0
 	respErr uint64 = 0
 
-	responseTimes	[]uint64
+	responseTimes []uint64
+	client        *http.Client
 )
 
 func main() {
 
+	var message *Message
+
 	fmt.Println("GATTACK!GATTACK!")
 
 	flag.StringVar(&tick, "p", "1s", "log period")
-	flag.IntVar(&concurrency, "c",  10, "concurrency")
+	flag.IntVar(&concurrency, "c", 10, "concurrency")
 	flag.Parse()
-
 
 	tickDuration, err := time.ParseDuration(tick)
 	if err != nil {
@@ -52,17 +53,15 @@ func main() {
 
 	fmt.Println("print log every ", tickDuration)
 
-
 	logTimer := time.Tick(tickDuration)
 	works = make(chan *Work, concurrency)
 	messages = make(chan *Message, concurrency*2)
 	pool = make(chan bool, concurrency)
 
-	var message *Message
+	client = &http.Client{Transport: &http.Transport{MaxIdleConnsPerHost: concurrency}}
 
 	go attack()
 	for {
-
 
 		select {
 		case message = <-messages:
@@ -75,11 +74,11 @@ func main() {
 
 			curOk := atomic.LoadUint64(&respOk)
 			curErr := atomic.LoadUint64(&respErr)
-			totalReq := curOk+curErr;
+			totalReq := curOk + curErr
 			throughP := float32(totalReq) / float32(tickDuration.Seconds())
 
-			atomic.SwapUint64(&respOk, uint64(0));
-			atomic.SwapUint64(&respErr, uint64(0));
+			atomic.SwapUint64(&respOk, uint64(0))
+			atomic.SwapUint64(&respErr, uint64(0))
 
 			log.Printf("\n~~~\n")
 			fmt.Printf("ok - %d\n", curOk)
@@ -91,7 +90,6 @@ func main() {
 			fmt.Printf("~~~\n")
 
 		}
-
 
 	}
 }
@@ -160,10 +158,9 @@ func attackattack(work *Work) {
 	}()
 
 	var (
-		req    *http.Request
-		err    error
-		resp   *http.Response
-		client http.Client
+		req  *http.Request
+		err  error
+		resp *http.Response
 	)
 
 	req, err = prepareReq(work)
@@ -172,15 +169,17 @@ func attackattack(work *Work) {
 		resp, err = client.Do(req)
 	}
 
-	if (err == nil) {
+	if err == nil {
+		defer func() {
+			io.Copy(ioutil.Discard, resp.Body)
+			resp.Body.Close()
+		}()
 
 		if resp.StatusCode < 400 {
 			atomic.AddUint64(&respOk, uint64(1))
 		} else {
 			atomic.AddUint64(&respErr, uint64(1))
 		}
-		io.Copy(ioutil.Discard, resp.Body)
-		defer resp.Body.Close()
 	} else {
 		atomic.AddUint64(&respErr, uint64(1))
 	}
@@ -189,13 +188,14 @@ func attackattack(work *Work) {
 
 func prepareReq(work *Work) (req *http.Request, err error) {
 
-	var ( urlValues url.Values
-		header http.Header
+	var (
+		urlValues url.Values
+		header    http.Header
 	)
 
 	header = http.Header{}
 
-	if (err != nil) {
+	if err != nil {
 		return nil, err
 	}
 
