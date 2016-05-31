@@ -2,8 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/csv"
 	"flag"
 	"fmt"
 	"io"
@@ -177,8 +175,8 @@ func attack(f *os.File) {
 		if verbose {
 			log.Println("readline", string(buffer))
 		}
-		r := csv.NewReader(bytes.NewReader(buffer))
-		record, err = r.Read()
+
+		record = strings.Split(string(buffer), ",")
 		recordLen = len(record)
 
 		if verbose {
