@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 	//"regexp"
+	"sort"
 )
 
 var (
@@ -112,7 +113,10 @@ func main() {
 			curErr := atomic.LoadUint64(&respErr)
 			totalReq := curOk + curErr
 			throughP := float32(totalReq) / float32(tickDuration.Seconds())
-			//curResponseTimes := responseTimes
+			curResponseTimes := responseTimes
+			sort.Sort(int64arr(curResponseTimes))
+
+			stat := Stat(curResponseTimes)
 
 			log.Printf("\n~~~\n")
 			fmt.Printf("ok - %d\n", curOk)
@@ -122,6 +126,11 @@ func main() {
 			fmt.Printf("active/total #1 - %d/%d\n", curRSize, concurrency)
 			fmt.Printf("active/total #2 - %d/%d\n", len(pool), concurrency)
 			//fmt.Printf("timings - %+v\n", curResponseTimes)
+			fmt.Printf("avg/s - %f\n", stat.Avg())
+			fmt.Printf("100c, sec - %f\n", stat.Cent(100))
+			fmt.Printf("99c, sec - %f\n", stat.Cent(99))
+			fmt.Printf("95c, sec - %f\n", stat.Cent(95))
+			fmt.Printf("90c, sec - %f\n", stat.Cent(90))
 
 			fmt.Printf("~~~\n")
 
@@ -190,7 +199,6 @@ func attack(f *os.File) {
 				log.Fatalln("f.seek", err)
 			}
 			continue
-
 
 		} else if err != nil {
 			if verbose {
@@ -333,4 +341,28 @@ type Work struct {
 	UserAgent string
 	Method    string
 	Body      string
+}
+
+type int64arr []int64
+
+func (a int64arr) Len() int           { return len(a) }
+func (a int64arr) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a int64arr) Less(i, j int) bool { return a[i] < a[j] }
+
+type Stat []int64
+
+func (a Stat) Avg() float32 {
+	var sum int64
+	sum = 0
+	for _, num := range a {
+		sum += num
+	}
+
+	//to seconds; nanosecod = 1e-9
+	return float32(sum) / float32(len(a)) / 1000000000
+}
+func (a Stat) Cent(cent int) float32 {
+	sliceSize := int(float32(len(a)) * float32(cent) / 100)
+	slice := a[sliceSize-1 : sliceSize]
+	return float32(slice[0]) / 1000000000
 }
