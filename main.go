@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	//_ "net/http/pprof"
 	"net/url"
 	"os"
 	"runtime"
@@ -48,6 +49,9 @@ func main() {
 
 	if profile {
 		f_cpu_profiling, err := os.Create("profile.prof")
+		//go func(){
+		//	log.Println(http.ListenAndServe(":4000", nil))
+		//}()
 		if err != nil {
 			panic(err)
 		}
