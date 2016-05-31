@@ -9,14 +9,16 @@ import (
 	"log"
 	"net/http"
 	//_ "net/http/pprof"
+	"bytes"
+	"encoding/csv"
 	"net/url"
 	"os"
-	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"strings"
 	"sync/atomic"
 	"time"
+	//"regexp"
 )
 
 var (
@@ -35,7 +37,7 @@ var (
 
 	responseTimes []int64
 	client        *http.Client
-	lineRegexp          *regexp.Regexp
+	//lineRegexp          *regexp.Regexp
 )
 
 func main() {
@@ -73,11 +75,10 @@ func main() {
 		log.Fatalln(err)
 	}
 
-	lineRegexp, err = regexp.Compile(`([^,]+)\,([^,]+)\,([^,]+)\,([^,]+)`)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
+	//lineRegexp, err = regexp.Compile(`([^,]+)\,([^,]+)\,([^,]+)\,([^,]+)`)
+	//if err != nil {
+	//	log.Fatalln(err)
+	//}
 
 	fmt.Println("GATTACK!GATTACK!")
 	fmt.Println("print log every ", tickDuration)
@@ -142,14 +143,15 @@ func main() {
 func attack(f *os.File) {
 
 	var (
-		err       error
-		reader    *bufio.Reader
-		buffer    []byte
-		b         []byte
-		work      *Work
-		recordLen int
-		record    []string
-		isPrefix  bool
+		err         error
+		reader      *bufio.Reader
+		buffer      []byte
+		b           []byte
+		work        *Work
+		recordLen   int
+		record      []string
+		isPrefix    bool
+		cleanBuffer bool
 	)
 
 	reader = bufio.NewReader(f)
@@ -159,13 +161,23 @@ func attack(f *os.File) {
 	}()
 
 	buffer = []byte{}
+	cleanBuffer = true
 	for {
-		b, isPrefix, err = reader.ReadLine()
+		if cleanBuffer {
+			buffer = []byte{}
+			cleanBuffer = false
+		}
 
+		b, isPrefix, err = reader.ReadLine()
 		buffer = append(buffer, b...)
 
 		if isPrefix {
+			if verbose {
+				log.Println("isPrefix!")
+			}
 			continue
+		} else {
+			cleanBuffer = true
 		}
 
 		if err == io.EOF {
@@ -181,32 +193,46 @@ func attack(f *os.File) {
 		}
 
 		if verbose {
-			log.Println("readline", string(buffer))
+			log.Println("~ readline", string(buffer))
 		}
 
-		record = lineRegexp.FindStringSubmatch(string(buffer))
+		r := csv.NewReader(bytes.NewReader(buffer))
+		record, err = r.Read()
+
+		//record = lineRegexp.FindStringSubmatch(string(buffer))
+
 		recordLen = len(record)
+
+		if recordLen == 0 && verbose {
+			log.Println("WARN. Incorrect line", string(buffer))
+			continue
+		}
 
 		if verbose {
 			log.Println("csv len ", recordLen)
-			log.Println("csv record1 ", record[0])
-			log.Println("csv record2 ", record[1])
-			log.Println("csv record3 ", record[2])
-			log.Println("csv record4 ", record[3])
-			log.Println("csv record5 ", record[4])
+			log.Println("csv record0 ", record[0])
+			log.Println("csv record1 ", record[1])
+			log.Println("csv record2 ", record[2])
+			log.Println("csv record3 ", record[3])
 		}
+
+		//log.Println(record[0])
+		//log.Println(record[1])
+		//log.Println(record[2])
+		//log.Println(record[3])
+		//log.Println(recordLen)
 
 		if err == nil {
 			work = &Work{}
-			work.Url = record[1]
+			work.Url = record[0]
 
-			if recordLen < 5 {
-				log.Fatalln("incorrect line format", record)
+			if recordLen < 4 {
+				log.Fatalln("incorrect line format", record, recordLen)
 			}
 
-			work.UserAgent = record[2]
-			work.Method = record[3]
-			work.Body = record[4]
+			work.UserAgent = record[1]
+			work.Method = record[2]
+			work.Body = record[3]
 
 			pool <- true
 			go attackattack(work)
@@ -232,6 +258,10 @@ func attackattack(work *Work) {
 	defer func() {
 		atomic.AddUint64(&currentRoutineSize, ^uint64(0))
 	}()
+
+	if verbose {
+		log.Println("~ work", work)
+	}
 
 	req, err = prepareReq(work)
 
