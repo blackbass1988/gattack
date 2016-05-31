@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"runtime"
+	"runtime/pprof"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -22,8 +24,11 @@ var (
 	concurrency int
 	tick        string
 	verbose     bool
+	profile     bool
 
 	pool               chan bool
+	currentRoutineSize uint64 = 0
+	curRSize           uint64 = 0
 
 	respOk  uint64 = 0
 	respErr uint64 = 0
@@ -38,10 +43,25 @@ func main() {
 	flag.IntVar(&concurrency, "c", 10, "concurrency")
 	flag.StringVar(&file, "f", "samples.csv", "csv source")
 	flag.BoolVar(&verbose, "v", false, "verbose mode")
+	flag.BoolVar(&profile, "profile", false, "profile mode")
 	flag.Parse()
 
+	if profile {
+		f_cpu_profiling, err := os.Create("profile.prof")
+		if err != nil {
+			panic(err)
+		}
+		pprof.StartCPUProfile(f_cpu_profiling)
+		defer func() {
+			pprof.StopCPUProfile()
+		}()
+
+	}
+
+	m := &runtime.MemStats{}
 	tickDuration, err := time.ParseDuration(tick)
 	logTimer := time.Tick(tickDuration)
+	cProfile := time.Tick(30 * time.Second)
 	pool = make(chan bool, concurrency)
 	responseTimes = []int64{}
 
@@ -64,6 +84,19 @@ func main() {
 		select {
 		case <-logTimer:
 
+			if profile {
+				runtime.ReadMemStats(m)
+				log.Printf("~ Goroutines count %d\n", runtime.NumGoroutine())
+				log.Printf("~ Memory HeapAlloc %d\n", m.HeapAlloc/1024)
+				log.Printf("~ Memory HeapInuse %d\n", m.HeapInuse/1024)
+
+				log.Printf("~ Memory Alloc %d\n", m.Alloc)
+				log.Printf("~ Memory Mallocs %d\n", m.Mallocs)
+				log.Printf("~ Memory Frees %d\n", m.Frees)
+			}
+
+			curRSize = atomic.LoadUint64(&currentRoutineSize)
+
 			curOk := atomic.LoadUint64(&respOk)
 			curErr := atomic.LoadUint64(&respErr)
 			totalReq := curOk + curErr
@@ -75,7 +108,8 @@ func main() {
 			fmt.Printf("errors - %d\n", curErr)
 			fmt.Printf("total - %d\n", totalReq)
 			fmt.Printf("t/s - %f\n", throughP)
-			fmt.Printf("active/total - %d/%d\n", len(pool), concurrency)
+			fmt.Printf("active/total #1 - %d/%d\n", curRSize, concurrency)
+			fmt.Printf("active/total #2 - %d/%d\n", len(pool), concurrency)
 			fmt.Printf("timings - %+v\n", curResponseTimes)
 
 			fmt.Printf("~~~\n")
@@ -83,6 +117,14 @@ func main() {
 			atomic.SwapUint64(&respOk, uint64(0))
 			atomic.SwapUint64(&respErr, uint64(0))
 			responseTimes = []int64{}
+		case <-cProfile:
+			if profile {
+				var f_heap_profiling io.Writer
+				f_heap_profiling, err = os.Create("profile_heap.prof")
+				pprof.WriteHeapProfile(f_heap_profiling)
+				fmt.Printf("profile_heap done")
+
+			}
 		}
 	}
 }
@@ -90,15 +132,14 @@ func main() {
 func attack(f *os.File) {
 
 	var (
-		err          error
-		reader       *bufio.Reader
-		buffer       []byte
-		b []byte
-		work         *Work
-		recordLen    int
-		record       []string
-		isPrefix     bool
-
+		err       error
+		reader    *bufio.Reader
+		buffer    []byte
+		b         []byte
+		work      *Work
+		recordLen int
+		record    []string
+		isPrefix  bool
 	)
 
 	reader = bufio.NewReader(f)
@@ -171,11 +212,17 @@ func attackattack(work *Work) {
 		duration int64
 	)
 
+	atomic.AddUint64(&currentRoutineSize, uint64(1))
+
+	defer func() {
+		atomic.AddUint64(&currentRoutineSize, ^uint64(0))
+	}()
+
 	req, err = prepareReq(work)
 
-	if verbose {
-		log.Println("request", req, err)
-	}
+	//if verbose {
+	//	log.Println("request", req, err)
+	//}
 
 	start = time.Now().UnixNano()
 
@@ -183,9 +230,9 @@ func attackattack(work *Work) {
 		resp, err = client.Do(req)
 	}
 
-	if verbose {
-		log.Println("response", resp, err)
-	}
+	//if verbose {
+	//	log.Println("response", resp, err)
+	//}
 
 	if err == nil {
 		defer func() {
