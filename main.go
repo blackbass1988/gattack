@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/csv"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -22,10 +21,9 @@ var (
 	file        string = "samples.csv"
 	concurrency int
 	tick        string
+	verbose     bool
 
 	pool               chan bool
-	currentRoutineSize uint64 = 0
-	curRSize           uint64 = 0
 
 	respOk  uint64 = 0
 	respErr uint64 = 0
@@ -39,6 +37,7 @@ func main() {
 	flag.StringVar(&tick, "p", "1s", "log period")
 	flag.IntVar(&concurrency, "c", 10, "concurrency")
 	flag.StringVar(&file, "f", "samples.csv", "csv source")
+	flag.BoolVar(&verbose, "v", false, "verbose mode")
 	flag.Parse()
 
 	tickDuration, err := time.ParseDuration(tick)
@@ -65,8 +64,6 @@ func main() {
 		select {
 		case <-logTimer:
 
-			curRSize = atomic.LoadUint64(&currentRoutineSize)
-
 			curOk := atomic.LoadUint64(&respOk)
 			curErr := atomic.LoadUint64(&respErr)
 			totalReq := curOk + curErr
@@ -78,7 +75,7 @@ func main() {
 			fmt.Printf("errors - %d\n", curErr)
 			fmt.Printf("total - %d\n", totalReq)
 			fmt.Printf("t/s - %f\n", throughP)
-			fmt.Printf("active/total - %d/%d\n", curRSize, concurrency)
+			fmt.Printf("active/total - %d/%d\n", len(pool), concurrency)
 			fmt.Printf("timings - %+v\n", curResponseTimes)
 
 			fmt.Printf("~~~\n")
@@ -90,13 +87,18 @@ func main() {
 	}
 }
 
-func attack(f *os.File) (err error) {
+func attack(f *os.File) {
 
 	var (
-		reader    *bufio.Reader
-		buffer    []byte
-		work      *Work
-		recordLen int
+		err          error
+		reader       *bufio.Reader
+		buffer       []byte
+		b []byte
+		work         *Work
+		recordLen    int
+		record       []string
+		isPrefix     bool
+
 	)
 
 	reader = bufio.NewReader(f)
@@ -105,30 +107,45 @@ func attack(f *os.File) (err error) {
 		f.Close()
 	}()
 
+	buffer = []byte{}
 	for {
-		buffer, _, err = reader.ReadLine()
+		b, isPrefix, err = reader.ReadLine()
 
-		if err == io.EOF {
-			_, err = f.Seek(0, 0)
-		} else if err != nil {
-			log.Fatalln(err)
-			return err
-		}
+		buffer = append(buffer, b...)
 
-		if len(buffer) == 0 {
+		if isPrefix {
 			continue
 		}
+
+		if err == io.EOF {
+			if verbose {
+				log.Println("io.EOF")
+			}
+			_, err = f.Seek(0, 0)
+		} else if err != nil {
+			if verbose {
+				log.Println("err", err)
+			}
+			log.Fatalln(err)
+		}
+
+		if verbose {
+			log.Println("readline", string(buffer))
+		}
 		r := csv.NewReader(bytes.NewReader(buffer))
-		record, err := r.Read()
+		record, err = r.Read()
 		recordLen = len(record)
+
+		if verbose {
+			log.Println("csv record ", recordLen, record)
+		}
 
 		if err == nil {
 			work = &Work{}
 			work.Url = record[0]
 
 			if recordLen < 4 {
-				err = errors.New("incorrect line format")
-				return err
+				log.Fatalln("incorrect line format")
 			}
 
 			work.UserAgent = record[1]
@@ -137,10 +154,10 @@ func attack(f *os.File) (err error) {
 
 			pool <- true
 			go attackattack(work)
-
+		} else {
+			log.Fatalln(err)
 		}
 	}
-	return err
 }
 
 func attackattack(work *Work) {
@@ -154,17 +171,20 @@ func attackattack(work *Work) {
 		duration int64
 	)
 
-	atomic.AddUint64(&currentRoutineSize, uint64(1))
-
-	defer func() {
-		atomic.AddUint64(&currentRoutineSize, ^uint64(0))
-	}()
-
 	req, err = prepareReq(work)
 
+	if verbose {
+		log.Println("request", req, err)
+	}
+
 	start = time.Now().UnixNano()
+
 	if err == nil {
 		resp, err = client.Do(req)
+	}
+
+	if verbose {
+		log.Println("response", resp, err)
 	}
 
 	if err == nil {
