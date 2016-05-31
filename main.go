@@ -11,6 +11,7 @@ import (
 	//_ "net/http/pprof"
 	"net/url"
 	"os"
+	"regexp"
 	"runtime"
 	"runtime/pprof"
 	"strings"
@@ -34,6 +35,7 @@ var (
 
 	responseTimes []int64
 	client        *http.Client
+	lineRegexp          *regexp.Regexp
 )
 
 func main() {
@@ -70,6 +72,12 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
+
+	lineRegexp, err = regexp.Compile(`([^,]+)\,([^,]+)\,([^,]+)\,([^,]+)`)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 
 	fmt.Println("GATTACK!GATTACK!")
 	fmt.Println("print log every ", tickDuration)
@@ -176,24 +184,29 @@ func attack(f *os.File) {
 			log.Println("readline", string(buffer))
 		}
 
-		record = strings.Split(string(buffer), ",")
+		record = lineRegexp.FindStringSubmatch(string(buffer))
 		recordLen = len(record)
 
 		if verbose {
-			log.Println("csv record ", recordLen, record)
+			log.Println("csv len ", recordLen)
+			log.Println("csv record1 ", record[0])
+			log.Println("csv record2 ", record[1])
+			log.Println("csv record3 ", record[2])
+			log.Println("csv record4 ", record[3])
+			log.Println("csv record5 ", record[4])
 		}
 
 		if err == nil {
 			work = &Work{}
-			work.Url = record[0]
+			work.Url = record[1]
 
-			if recordLen < 4 {
-				log.Fatalln("incorrect line format")
+			if recordLen < 5 {
+				log.Fatalln("incorrect line format", record)
 			}
 
-			work.UserAgent = record[1]
-			work.Method = record[2]
-			work.Body = record[3]
+			work.UserAgent = record[2]
+			work.Method = record[3]
+			work.Body = record[4]
 
 			pool <- true
 			go attackattack(work)
