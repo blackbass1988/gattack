@@ -189,6 +189,8 @@ func attack(f *os.File) {
 			if err != nil {
 				log.Fatalln("f.seek", err)
 			}
+			continue
+
 
 		} else if err != nil {
 			if verbose {
