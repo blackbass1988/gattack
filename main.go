@@ -112,7 +112,7 @@ func main() {
 			curErr := atomic.LoadUint64(&respErr)
 			totalReq := curOk + curErr
 			throughP := float32(totalReq) / float32(tickDuration.Seconds())
-			curResponseTimes := responseTimes
+			//curResponseTimes := responseTimes
 
 			log.Printf("\n~~~\n")
 			fmt.Printf("ok - %d\n", curOk)
@@ -121,7 +121,7 @@ func main() {
 			fmt.Printf("t/s - %f\n", throughP)
 			fmt.Printf("active/total #1 - %d/%d\n", curRSize, concurrency)
 			fmt.Printf("active/total #2 - %d/%d\n", len(pool), concurrency)
-			fmt.Printf("timings - %+v\n", curResponseTimes)
+			//fmt.Printf("timings - %+v\n", curResponseTimes)
 
 			fmt.Printf("~~~\n")
 
@@ -185,11 +185,16 @@ func attack(f *os.File) {
 				log.Println("io.EOF")
 			}
 			_, err = f.Seek(0, 0)
+
+			if err != nil {
+				log.Fatalln("f.seek", err)
+			}
+
 		} else if err != nil {
 			if verbose {
 				log.Println("err", err)
 			}
-			log.Fatalln(err)
+			log.Fatalln("reader.ReadLine", err)
 		}
 
 		if verbose {
@@ -237,7 +242,7 @@ func attack(f *os.File) {
 			pool <- true
 			go attackattack(work)
 		} else {
-			log.Fatalln(err)
+			log.Fatalln("attack end", err)
 		}
 	}
 }
