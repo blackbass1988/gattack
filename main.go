@@ -31,7 +31,6 @@ var (
 
 	pool               chan bool
 	currentRoutineSize uint64 = 0
-	curRSize           uint64 = 0
 
 	respOk  uint64 = 0
 	respErr uint64 = 0
@@ -107,7 +106,6 @@ func main() {
 				log.Printf("~ Memory Frees %d\n", m.Frees)
 			}
 
-			curRSize = atomic.LoadUint64(&currentRoutineSize)
 
 			curOk := atomic.LoadUint64(&respOk)
 			curErr := atomic.LoadUint64(&respErr)
@@ -123,9 +121,7 @@ func main() {
 			fmt.Printf("errors - %d\n", curErr)
 			fmt.Printf("total - %d\n", totalReq)
 			fmt.Printf("t/s - %f\n", throughP)
-			fmt.Printf("active/total #1 - %d/%d\n", curRSize, concurrency)
 			fmt.Printf("active/total #2 - %d/%d\n", len(pool), concurrency)
-			//fmt.Printf("timings - %+v\n", curResponseTimes)
 			fmt.Printf("avg/s - %f\n", stat.Avg())
 			fmt.Printf("100c, sec - %f\n", stat.Cent(100))
 			fmt.Printf("99c, sec - %f\n", stat.Cent(99))
@@ -352,6 +348,11 @@ func (a int64arr) Less(i, j int) bool { return a[i] < a[j] }
 type Stat []int64
 
 func (a Stat) Avg() float32 {
+
+	if (len(a) == 0) {
+		return 0;
+	}
+
 	var sum int64
 	sum = 0
 	for _, num := range a {
@@ -362,6 +363,10 @@ func (a Stat) Avg() float32 {
 	return float32(sum) / float32(len(a)) / 1000000000
 }
 func (a Stat) Cent(cent int) float32 {
+	if (len(a) == 0) {
+		return 0;
+	}
+
 	sliceSize := int(float32(len(a)) * float32(cent) / 100)
 	slice := a[sliceSize-1 : sliceSize]
 	return float32(slice[0]) / 1000000000
