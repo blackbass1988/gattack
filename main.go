@@ -28,6 +28,7 @@ var (
 	tick        string
 	verbose     bool
 	profile     bool
+	isBodyJSON  bool
 
 	pool               chan bool
 	currentRoutineSize uint64 = 0
@@ -47,6 +48,7 @@ func main() {
 	flag.StringVar(&file, "f", "samples.csv", "csv source")
 	flag.BoolVar(&verbose, "v", false, "verbose mode")
 	flag.BoolVar(&profile, "profile", false, "profile mode")
+	flag.BoolVar(&isBodyJSON, "body-json", false, "send content type application/json")
 	flag.Parse()
 
 	if profile {
@@ -105,7 +107,6 @@ func main() {
 				log.Printf("~ Memory Mallocs %d\n", m.Mallocs)
 				log.Printf("~ Memory Frees %d\n", m.Frees)
 			}
-
 
 			curOk := atomic.LoadUint64(&respOk)
 			curErr := atomic.LoadUint64(&respErr)
@@ -324,6 +325,11 @@ func prepareReq(work *Work) (req *http.Request, err error) {
 
 	req, err = http.NewRequest(strings.ToUpper(work.Method), work.Url, nil)
 	req.Header.Add("User-Agent", work.UserAgent)
+
+	if isBodyJSON {
+		req.Header.Add("Content-Type", "application/json")
+	}
+
 	if req.Method == http.MethodPost {
 		urlValues, err = url.ParseQuery(work.Body)
 		req.Form = urlValues
@@ -349,8 +355,8 @@ type Stat []int64
 
 func (a Stat) Avg() float32 {
 
-	if (len(a) == 0) {
-		return 0;
+	if len(a) == 0 {
+		return 0
 	}
 
 	var sum int64
@@ -363,8 +369,8 @@ func (a Stat) Avg() float32 {
 	return float32(sum) / float32(len(a)) / 1000000000
 }
 func (a Stat) Cent(cent int) float32 {
-	if (len(a) == 0) {
-		return 0;
+	if len(a) == 0 {
+		return 0
 	}
 
 	sliceSize := int(float32(len(a)) * float32(cent) / 100)
