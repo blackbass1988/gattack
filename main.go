@@ -315,9 +315,7 @@ func attackattack(work *Work) {
 
 func prepareReq(work *Work) (req *http.Request, err error) {
 
-	var (
-		urlValues url.Values
-	)
+	var urlValues url.Values
 
 	if err != nil {
 		return nil, err
@@ -328,9 +326,10 @@ func prepareReq(work *Work) (req *http.Request, err error) {
 
 	if isBodyJSON {
 		req.Header.Add("Content-Type", "application/json")
+		req.Body = ioutil.NopCloser(strings.NewReader(work.Body))
 	}
 
-	if req.Method == http.MethodPost {
+	if req.Method == http.MethodPost && !isBodyJSON {
 		urlValues, err = url.ParseQuery(work.Body)
 		req.Form = urlValues
 	}
